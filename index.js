@@ -1,12 +1,15 @@
-var parsePath = require('./lib/parse-path')
-var setValue = require('./lib/set-value')
+'use strict';
 
-function appendField (store, key, value) {
-  var steps = parsePath(key)
+var bind = require('function-bind');
+var $TypeError = require('es-errors/type');
 
-  steps.reduce(function (context, step) {
-    return setValue(context, step, context[step.key], value)
-  }, store)
-}
+var $call = require('./functionCall');
+var $actualApply = require('./actualApply');
 
-module.exports = appendField
+/** @type {(args: [Function, thisArg?: unknown, ...args: unknown[]]) => Function} TODO FIXME, find a way to use import('.') */
+module.exports = function callBindBasic(args) {
+	if (args.length < 1 || typeof args[0] !== 'function') {
+		throw new $TypeError('a function is required');
+	}
+	return $actualApply(bind, $call, args);
+};
