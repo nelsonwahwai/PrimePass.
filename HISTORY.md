@@ -1,124 +1,83 @@
-1.4.7 / 2024-10-08
-==========
-
-  * deps: cookie@0.7.2
-    - Fix object assignment of `hasOwnProperty`
-  * deps: cookie@0.7.1
-    - Allow leading dot for domain
-      - Although not permitted in the spec, some users expect this to work and user agents ignore the leading dot according to spec
-    - Add fast path for `serialize` without options, use `obj.hasOwnProperty` when parsing
-  * deps: cookie@0.7.0
-    - perf: parse cookies ~10% faster
-    - fix: narrow the validation of cookies to match RFC6265
-    - fix: add `main` to `package.json` for rspack
-  * deps: cookie@0.6.0
-    - Add `partitioned` option
-  * deps: cookie@0.5.0
-    - Add `priority` option
-    - Fix `expires` option to reject invalid dates
-    - pref: improve default decode speed
-    - pref: remove slow string split in parse
-  * deps: cookie@0.4.2
-    - pref: read value only when assigning in parse
-    - pref: remove unnecessary regexp in parse
-
-1.4.6 / 2021-11-16
+1.8.1 / 2017-09-12
 ==================
 
-  * deps: cookie@0.4.1
+  * perf: replace regular expression with substring
 
-1.4.5 / 2020-03-14
+1.8.0 / 2017-02-18
 ==================
 
-  * deps: cookie@0.4.0
+  * Use SHA1 instead of MD5 for ETag hashing
+    - Improves performance for larger entities
+    - Works with FIPS 140-2 OpenSSL configuration
 
-1.4.4 / 2019-02-12
+1.7.0 / 2015-06-08
 ==================
 
-  * perf: normalize `secret` argument only once
+  * Always include entity length in ETags for hash length extensions
+  * Generate non-Stats ETags using MD5 only (no longer CRC32)
+  * Improve stat performance by removing hashing
+  * Remove base64 padding in ETags to shorten
+  * Use MD5 instead of MD4 in weak ETags over 1KB
 
-1.4.3 / 2016-05-26
+1.6.0 / 2015-05-10
 ==================
 
-  * deps: cookie@0.3.1
-    - perf: use for loop in parse
+  * Improve support for JXcore
+  * Remove requirement of `atime` in the stats object
+  * Support "fake" stats objects in environments without `fs`
 
-1.4.2 / 2016-05-20
+1.5.1 / 2014-11-19
 ==================
 
-  * deps: cookie@0.2.4
-    - perf: enable strict mode
-    - perf: use for loop in parse
-    - perf: use string concatenation for serialization
+  * deps: crc@3.2.1
+    - Minor fixes
 
-1.4.1 / 2016-01-11
+1.5.0 / 2014-10-14
 ==================
 
-  * deps: cookie@0.2.3
-  * perf: enable strict mode
+  * Improve string performance
+  * Slightly improve speed for weak ETags over 1KB
 
-1.4.0 / 2015-09-18
+1.4.0 / 2014-09-21
 ==================
 
-  * Accept array of secrets in addition to a single secret
-  * Fix `JSONCookie` to return `undefined` for non-string arguments
-  * Fix `signedCookie` to return `undefined` for non-string arguments
-  * deps: cookie@0.2.2
+  * Support "fake" stats objects
+  * Support Node.js 0.6
 
-1.3.5 / 2015-05-19
+1.3.1 / 2014-09-14
 ==================
 
-  * deps: cookie@0.1.3
-    - Slight optimizations
+  * Use the (new and improved) `crc` for crc32
 
-1.3.4 / 2015-02-15
+1.3.0 / 2014-08-29
 ==================
 
-  * deps: cookie-signature@1.0.6
+  * Default strings to strong ETags
+  * Improve speed for weak ETags over 1KB
 
-1.3.3 / 2014-09-05
+1.2.1 / 2014-08-29
 ==================
 
-  * deps: cookie-signature@1.0.5
+  * Use the (much faster) `buffer-crc32` for crc32
 
-1.3.2 / 2014-06-26
+1.2.0 / 2014-08-24
 ==================
 
-  * deps: cookie-signature@1.0.4
-    - fix for timing attacks
+  * Add support for file stat objects
 
-1.3.1 / 2014-06-17
+1.1.0 / 2014-08-24
 ==================
 
-  * actually export `signedCookie`
+  * Add fast-path for empty entity
+  * Add weak ETag generation
+  * Shrink size of generated ETags
 
-1.3.0 / 2014-06-17
+1.0.1 / 2014-08-24
 ==================
 
-  * add `signedCookie` export for single cookie unsigning
+  * Fix behavior of string containing Unicode
 
-1.2.0 / 2014-06-17
+1.0.0 / 2014-05-18
 ==================
 
-  * export parsing functions
-  * `req.cookies` and `req.signedCookies` are now plain objects
-  * slightly faster parsing of many cookies
-
-1.1.0 / 2014-05-12
-==================
-
-  * Support for NodeJS version 0.8
-  * deps: cookie@0.1.2
-    - Fix for maxAge == 0
-    - made compat with expires field
-    - tweak maxAge NaN error message
-
-1.0.1 / 2014-02-20
-==================
-
-  * add missing dependencies
-
-1.0.0 / 2014-02-15
-==================
-
-  * Genesis from `connect`
+  * Initial release

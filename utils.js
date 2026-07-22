@@ -1,596 +1,304 @@
+/*!
+ * express
+ * Copyright(c) 2009-2013 TJ Holowaychuk
+ * Copyright(c) 2014-2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
 'use strict';
 
-function parseContentType(str) {
-  if (str.length === 0)
-    return;
+/**
+ * Module dependencies.
+ * @api private
+ */
 
-  const params = Object.create(null);
-  let i = 0;
+var Buffer = require('safe-buffer').Buffer
+var contentDisposition = require('content-disposition');
+var contentType = require('content-type');
+var deprecate = require('depd')('express');
+var flatten = require('array-flatten');
+var mime = require('send').mime;
+var etag = require('etag');
+var proxyaddr = require('proxy-addr');
+var qs = require('qs');
+var querystring = require('querystring');
 
-  // Parse type
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      if (code !== 47/* '/' */ || i === 0)
-        return;
-      break;
-    }
-  }
-  // Check for type without subtype
-  if (i === str.length)
-    return;
+/**
+ * Return strong ETag for `body`.
+ *
+ * @param {String|Buffer} body
+ * @param {String} [encoding]
+ * @return {String}
+ * @api private
+ */
 
-  const type = str.slice(0, i).toLowerCase();
+exports.etag = createETagGenerator({ weak: false })
 
-  // Parse subtype
-  const subtypeStart = ++i;
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      // Make sure we have a subtype
-      if (i === subtypeStart)
-        return;
+/**
+ * Return weak ETag for `body`.
+ *
+ * @param {String|Buffer} body
+ * @param {String} [encoding]
+ * @return {String}
+ * @api private
+ */
 
-      if (parseContentTypeParams(str, i, params) === undefined)
-        return;
-      break;
-    }
-  }
-  // Make sure we have a subtype
-  if (i === subtypeStart)
-    return;
+exports.wetag = createETagGenerator({ weak: true })
 
-  const subtype = str.slice(subtypeStart, i).toLowerCase();
+/**
+ * Check if `path` looks absolute.
+ *
+ * @param {String} path
+ * @return {Boolean}
+ * @api private
+ */
 
-  return { type, subtype, params };
-}
-
-function parseContentTypeParams(str, i, params) {
-  while (i < str.length) {
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace
-    if (i === str.length)
-      break;
-
-    // Check for malformed parameter
-    if (str.charCodeAt(i++) !== 59/* ';' */)
-      return;
-
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace (malformed)
-    if (i === str.length)
-      return;
-
-    let name;
-    const nameStart = i;
-    // Parse parameter name
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (TOKEN[code] !== 1) {
-        if (code !== 61/* '=' */)
-          return;
-        break;
-      }
-    }
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    name = str.slice(nameStart, i);
-    ++i; // Skip over '='
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    let value = '';
-    let valueStart;
-    if (str.charCodeAt(i) === 34/* '"' */) {
-      valueStart = ++i;
-      let escaping = false;
-      // Parse quoted value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (code === 92/* '\\' */) {
-          if (escaping) {
-            valueStart = i;
-            escaping = false;
-          } else {
-            value += str.slice(valueStart, i);
-            escaping = true;
-          }
-          continue;
-        }
-        if (code === 34/* '"' */) {
-          if (escaping) {
-            valueStart = i;
-            escaping = false;
-            continue;
-          }
-          value += str.slice(valueStart, i);
-          break;
-        }
-        if (escaping) {
-          valueStart = i - 1;
-          escaping = false;
-        }
-        // Invalid unescaped quoted character (malformed)
-        if (QDTEXT[code] !== 1)
-          return;
-      }
-
-      // No end quote (malformed)
-      if (i === str.length)
-        return;
-
-      ++i; // Skip over double quote
-    } else {
-      valueStart = i;
-      // Parse unquoted value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (TOKEN[code] !== 1) {
-          // No value (malformed)
-          if (i === valueStart)
-            return;
-          break;
-        }
-      }
-      value = str.slice(valueStart, i);
-    }
-
-    name = name.toLowerCase();
-    if (params[name] === undefined)
-      params[name] = value;
-  }
-
-  return params;
-}
-
-function parseDisposition(str, defDecoder) {
-  if (str.length === 0)
-    return;
-
-  const params = Object.create(null);
-  let i = 0;
-
-  for (; i < str.length; ++i) {
-    const code = str.charCodeAt(i);
-    if (TOKEN[code] !== 1) {
-      if (parseDispositionParams(str, i, params, defDecoder) === undefined)
-        return;
-      break;
-    }
-  }
-
-  const type = str.slice(0, i).toLowerCase();
-
-  return { type, params };
-}
-
-function parseDispositionParams(str, i, params, defDecoder) {
-  while (i < str.length) {
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace
-    if (i === str.length)
-      break;
-
-    // Check for malformed parameter
-    if (str.charCodeAt(i++) !== 59/* ';' */)
-      return;
-
-    // Consume whitespace
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (code !== 32/* ' ' */ && code !== 9/* '\t' */)
-        break;
-    }
-
-    // Ended on whitespace (malformed)
-    if (i === str.length)
-      return;
-
-    let name;
-    const nameStart = i;
-    // Parse parameter name
-    for (; i < str.length; ++i) {
-      const code = str.charCodeAt(i);
-      if (TOKEN[code] !== 1) {
-        if (code === 61/* '=' */)
-          break;
-        return;
-      }
-    }
-
-    // No value (malformed)
-    if (i === str.length)
-      return;
-
-    let value = '';
-    let valueStart;
-    let charset;
-    //~ let lang;
-    name = str.slice(nameStart, i);
-    if (name.charCodeAt(name.length - 1) === 42/* '*' */) {
-      // Extended value
-
-      const charsetStart = ++i;
-      // Parse charset name
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (CHARSET[code] !== 1) {
-          if (code !== 39/* '\'' */)
-            return;
-          break;
-        }
-      }
-
-      // Incomplete charset (malformed)
-      if (i === str.length)
-        return;
-
-      charset = str.slice(charsetStart, i);
-      ++i; // Skip over the '\''
-
-      //~ const langStart = ++i;
-      // Parse language name
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (code === 39/* '\'' */)
-          break;
-      }
-
-      // Incomplete language (malformed)
-      if (i === str.length)
-        return;
-
-      //~ lang = str.slice(langStart, i);
-      ++i; // Skip over the '\''
-
-      // No value (malformed)
-      if (i === str.length)
-        return;
-
-      valueStart = i;
-
-      let encode = 0;
-      // Parse value
-      for (; i < str.length; ++i) {
-        const code = str.charCodeAt(i);
-        if (EXTENDED_VALUE[code] !== 1) {
-          if (code === 37/* '%' */) {
-            let hexUpper;
-            let hexLower;
-            if (i + 2 < str.length
-                && (hexUpper = HEX_VALUES[str.charCodeAt(i + 1)]) !== -1
-                && (hexLower = HEX_VALUES[str.charCodeAt(i + 2)]) !== -1) {
-              const byteVal = (hexUpper << 4) + hexLower;
-              value += str.slice(valueStart, i);
-              value += String.fromCharCode(byteVal);
-              i += 2;
-              valueStart = i + 1;
-              if (byteVal >= 128)
-                encode = 2;
-              else if (encode === 0)
-                encode = 1;
-              continue;
-            }
-            // '%' disallowed in non-percent encoded contexts (malformed)
-            return;
-          }
-          break;
-        }
-      }
-
-      value += str.slice(valueStart, i);
-      value = convertToUTF8(value, charset, encode);
-      if (value === undefined)
-        return;
-    } else {
-      // Non-extended value
-
-      ++i; // Skip over '='
-
-      // No value (malformed)
-      if (i === str.length)
-        return;
-
-      if (str.charCodeAt(i) === 34/* '"' */) {
-        valueStart = ++i;
-        let escaping = false;
-        // Parse quoted value
-        for (; i < str.length; ++i) {
-          const code = str.charCodeAt(i);
-          if (code === 92/* '\\' */) {
-            if (escaping) {
-              valueStart = i;
-              escaping = false;
-            } else {
-              value += str.slice(valueStart, i);
-              escaping = true;
-            }
-            continue;
-          }
-          if (code === 34/* '"' */) {
-            if (escaping) {
-              valueStart = i;
-              escaping = false;
-              continue;
-            }
-            value += str.slice(valueStart, i);
-            break;
-          }
-          if (escaping) {
-            valueStart = i - 1;
-            escaping = false;
-          }
-          // Invalid unescaped quoted character (malformed)
-          if (QDTEXT[code] !== 1)
-            return;
-        }
-
-        // No end quote (malformed)
-        if (i === str.length)
-          return;
-
-        ++i; // Skip over double quote
-      } else {
-        valueStart = i;
-        // Parse unquoted value
-        for (; i < str.length; ++i) {
-          const code = str.charCodeAt(i);
-          if (TOKEN[code] !== 1) {
-            // No value (malformed)
-            if (i === valueStart)
-              return;
-            break;
-          }
-        }
-        value = str.slice(valueStart, i);
-      }
-
-      value = defDecoder(value, 2);
-      if (value === undefined)
-        return;
-    }
-
-    name = name.toLowerCase();
-    if (params[name] === undefined)
-      params[name] = value;
-  }
-
-  return params;
-}
-
-function getDecoder(charset) {
-  let lc;
-  while (true) {
-    switch (charset) {
-      case 'utf-8':
-      case 'utf8':
-        return decoders.utf8;
-      case 'latin1':
-      case 'ascii': // TODO: Make these a separate, strict decoder?
-      case 'us-ascii':
-      case 'iso-8859-1':
-      case 'iso8859-1':
-      case 'iso88591':
-      case 'iso_8859-1':
-      case 'windows-1252':
-      case 'iso_8859-1:1987':
-      case 'cp1252':
-      case 'x-cp1252':
-        return decoders.latin1;
-      case 'utf16le':
-      case 'utf-16le':
-      case 'ucs2':
-      case 'ucs-2':
-        return decoders.utf16le;
-      case 'base64':
-        return decoders.base64;
-      default:
-        if (lc === undefined) {
-          lc = true;
-          charset = charset.toLowerCase();
-          continue;
-        }
-        return decoders.other.bind(charset);
-    }
-  }
-}
-
-const decoders = {
-  utf8: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string') {
-      // If `data` never had any percent-encoded bytes or never had any that
-      // were outside of the ASCII range, then we can safely just return the
-      // input since UTF-8 is ASCII compatible
-      if (hint < 2)
-        return data;
-
-      data = Buffer.from(data, 'latin1');
-    }
-    return data.utf8Slice(0, data.length);
-  },
-
-  latin1: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      return data;
-    return data.latin1Slice(0, data.length);
-  },
-
-  utf16le: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    return data.ucs2Slice(0, data.length);
-  },
-
-  base64: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    return data.base64Slice(0, data.length);
-  },
-
-  other: (data, hint) => {
-    if (data.length === 0)
-      return '';
-    if (typeof data === 'string')
-      data = Buffer.from(data, 'latin1');
-    try {
-      const decoder = new TextDecoder(this);
-      return decoder.decode(data);
-    } catch {}
-  },
+exports.isAbsolute = function(path){
+  if ('/' === path[0]) return true;
+  if (':' === path[1] && ('\\' === path[2] || '/' === path[2])) return true; // Windows device path
+  if ('\\\\' === path.substring(0, 2)) return true; // Microsoft Azure absolute path
 };
 
-function convertToUTF8(data, charset, hint) {
-  const decode = getDecoder(charset);
-  if (decode)
-    return decode(data, hint);
-}
+/**
+ * Flatten the given `arr`.
+ *
+ * @param {Array} arr
+ * @return {Array}
+ * @api private
+ */
 
-function basename(path) {
-  if (typeof path !== 'string')
-    return '';
-  for (let i = path.length - 1; i >= 0; --i) {
-    switch (path.charCodeAt(i)) {
-      case 0x2F: // '/'
-      case 0x5C: // '\'
-        path = path.slice(i + 1);
-        return (path === '..' || path === '.' ? '' : path);
+exports.flatten = deprecate.function(flatten,
+  'utils.flatten: use array-flatten npm module instead');
+
+/**
+ * Normalize the given `type`, for example "html" becomes "text/html".
+ *
+ * @param {String} type
+ * @return {Object}
+ * @api private
+ */
+
+exports.normalizeType = function(type){
+  return ~type.indexOf('/')
+    ? acceptParams(type)
+    : { value: mime.lookup(type), params: {} };
+};
+
+/**
+ * Normalize `types`, for example "html" becomes "text/html".
+ *
+ * @param {Array} types
+ * @return {Array}
+ * @api private
+ */
+
+exports.normalizeTypes = function(types){
+  var ret = [];
+
+  for (var i = 0; i < types.length; ++i) {
+    ret.push(exports.normalizeType(types[i]));
+  }
+
+  return ret;
+};
+
+/**
+ * Generate Content-Disposition header appropriate for the filename.
+ * non-ascii filenames are urlencoded and a filename* parameter is added
+ *
+ * @param {String} filename
+ * @return {String}
+ * @api private
+ */
+
+exports.contentDisposition = deprecate.function(contentDisposition,
+  'utils.contentDisposition: use content-disposition npm module instead');
+
+/**
+ * Parse accept params `str` returning an
+ * object with `.value`, `.quality` and `.params`.
+ *
+ * @param {String} str
+ * @return {Object}
+ * @api private
+ */
+
+function acceptParams (str) {
+  var parts = str.split(/ *; */);
+  var ret = { value: parts[0], quality: 1, params: {} }
+
+  for (var i = 1; i < parts.length; ++i) {
+    var pms = parts[i].split(/ *= */);
+    if ('q' === pms[0]) {
+      ret.quality = parseFloat(pms[1]);
+    } else {
+      ret.params[pms[0]] = pms[1];
     }
   }
-  return (path === '..' || path === '.' ? '' : path);
+
+  return ret;
 }
 
-const TOKEN = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+/**
+ * Compile "etag" value to function.
+ *
+ * @param  {Boolean|String|Function} val
+ * @return {Function}
+ * @api private
+ */
 
-const QDTEXT = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-];
+exports.compileETag = function(val) {
+  var fn;
 
-const CHARSET = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+  if (typeof val === 'function') {
+    return val;
+  }
 
-const EXTENDED_VALUE = [
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
-  0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-];
+  switch (val) {
+    case true:
+    case 'weak':
+      fn = exports.wetag;
+      break;
+    case false:
+      break;
+    case 'strong':
+      fn = exports.etag;
+      break;
+    default:
+      throw new TypeError('unknown value for etag function: ' + val);
+  }
 
-/* eslint-disable no-multi-spaces */
-const HEX_VALUES = [
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-   0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1,
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-];
-/* eslint-enable no-multi-spaces */
+  return fn;
+}
 
-module.exports = {
-  basename,
-  convertToUTF8,
-  getDecoder,
-  parseContentType,
-  parseDisposition,
+/**
+ * Compile "query parser" value to function.
+ *
+ * @param  {String|Function} val
+ * @return {Function}
+ * @api private
+ */
+
+exports.compileQueryParser = function compileQueryParser(val) {
+  var fn;
+
+  if (typeof val === 'function') {
+    return val;
+  }
+
+  switch (val) {
+    case true:
+    case 'simple':
+      fn = querystring.parse;
+      break;
+    case false:
+      fn = newObject;
+      break;
+    case 'extended':
+      fn = parseExtendedQueryString;
+      break;
+    default:
+      throw new TypeError('unknown value for query parser function: ' + val);
+  }
+
+  return fn;
+}
+
+/**
+ * Compile "proxy trust" value to function.
+ *
+ * @param  {Boolean|String|Number|Array|Function} val
+ * @return {Function}
+ * @api private
+ */
+
+exports.compileTrust = function(val) {
+  if (typeof val === 'function') return val;
+
+  if (val === true) {
+    // Support plain true/false
+    return function(){ return true };
+  }
+
+  if (typeof val === 'number') {
+    // Support trusting hop count
+    return function(a, i){ return i < val };
+  }
+
+  if (typeof val === 'string') {
+    // Support comma-separated values
+    val = val.split(',')
+      .map(function (v) { return v.trim() })
+  }
+
+  return proxyaddr.compile(val || []);
+}
+
+/**
+ * Set the charset in a given Content-Type string.
+ *
+ * @param {String} type
+ * @param {String} charset
+ * @return {String}
+ * @api private
+ */
+
+exports.setCharset = function setCharset(type, charset) {
+  if (!type || !charset) {
+    return type;
+  }
+
+  // parse type
+  var parsed = contentType.parse(type);
+
+  // set charset
+  parsed.parameters.charset = charset;
+
+  // format type
+  return contentType.format(parsed);
 };
+
+/**
+ * Create an ETag generator function, generating ETags with
+ * the given options.
+ *
+ * @param {object} options
+ * @return {function}
+ * @private
+ */
+
+function createETagGenerator (options) {
+  return function generateETag (body, encoding) {
+    var buf = !Buffer.isBuffer(body)
+      ? Buffer.from(body, encoding)
+      : body
+
+    return etag(buf, options)
+  }
+}
+
+/**
+ * Parse an extended query string with qs.
+ *
+ * @param {String} str
+ * @return {Object}
+ * @private
+ */
+
+function parseExtendedQueryString(str) {
+  return qs.parse(str, {
+    allowPrototypes: true,
+    arrayLimit: 1000
+  });
+}
+
+/**
+ * Return new empty object.
+ *
+ * @return {Object}
+ * @api private
+ */
+
+function newObject() {
+  return {};
+}
