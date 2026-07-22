@@ -1,113 +1,58 @@
-# mime-types
+# node-gyp-build
 
-[![NPM Version][npm-version-image]][npm-url]
-[![NPM Downloads][npm-downloads-image]][npm-url]
-[![Node.js Version][node-version-image]][node-version-url]
-[![Build Status][ci-image]][ci-url]
-[![Test Coverage][coveralls-image]][coveralls-url]
+> Build tool and bindings loader for [`node-gyp`][node-gyp] that supports prebuilds.
 
-The ultimate javascript content-type utility.
-
-Similar to [the `mime@1.x` module](https://www.npmjs.com/package/mime), except:
-
-- __No fallbacks.__ Instead of naively returning the first available type,
-  `mime-types` simply returns `false`, so do
-  `var type = mime.lookup('unrecognized') || 'application/octet-stream'`.
-- No `new Mime()` business, so you could do `var lookup = require('mime-types').lookup`.
-- No `.define()` functionality
-- Bug fixes for `.lookup(path)`
-
-Otherwise, the API is compatible with `mime` 1.x.
-
-## Install
-
-This is a [Node.js](https://nodejs.org/en/) module available through the
-[npm registry](https://www.npmjs.com/). Installation is done using the
-[`npm install` command](https://docs.npmjs.com/getting-started/installing-npm-packages-locally):
-
-```sh
-$ npm install mime-types
+```
+npm install node-gyp-build
 ```
 
-## Adding Types
+[![Test](https://github.com/prebuild/node-gyp-build/actions/workflows/test.yml/badge.svg)](https://github.com/prebuild/node-gyp-build/actions/workflows/test.yml)
 
-All mime types are based on [mime-db](https://www.npmjs.com/package/mime-db),
-so open a PR there if you'd like to add mime types.
+Use together with [`prebuildify`][prebuildify] to easily support prebuilds for your native modules.
 
-## API
+## Usage
 
-```js
-var mime = require('mime-types')
+> **Note.** Prebuild names have changed in [`prebuildify@3`][prebuildify] and `node-gyp-build@4`. Please see the documentation below.
+
+`node-gyp-build` works similar to [`node-gyp build`][node-gyp] except that it will check if a build or prebuild is present before rebuilding your project.
+
+It's main intended use is as an npm install script and bindings loader for native modules that bundle prebuilds using [`prebuildify`][prebuildify].
+
+First add `node-gyp-build` as an install script to your native project
+
+``` js
+{
+  ...
+  "scripts": {
+    "install": "node-gyp-build"
+  }
+}
 ```
 
-All functions return `false` if input is invalid or not found.
+Then in your `index.js`, instead of using the [`bindings`](https://www.npmjs.com/package/bindings) module use `node-gyp-build` to load your binding.
 
-### mime.lookup(path)
-
-Lookup the content-type associated with a file.
-
-```js
-mime.lookup('json') // 'application/json'
-mime.lookup('.md') // 'text/markdown'
-mime.lookup('file.html') // 'text/html'
-mime.lookup('folder/file.js') // 'application/javascript'
-mime.lookup('folder/.htaccess') // false
-
-mime.lookup('cats') // false
+``` js
+var binding = require('node-gyp-build')(__dirname)
 ```
 
-### mime.contentType(type)
+If you do these two things and bundle prebuilds with [`prebuildify`][prebuildify] your native module will work for most platforms
+without having to compile on install time AND will work in both node and electron without the need to recompile between usage.
 
-Create a full content-type header given a content-type or extension.
-When given an extension, `mime.lookup` is used to get the matching
-content-type, otherwise the given content-type is used. Then if the
-content-type does not already have a `charset` parameter, `mime.charset`
-is used to get the default charset and add to the returned content-type.
+Users can override `node-gyp-build` and force compiling by doing `npm install --build-from-source`.
 
-```js
-mime.contentType('markdown') // 'text/x-markdown; charset=utf-8'
-mime.contentType('file.json') // 'application/json; charset=utf-8'
-mime.contentType('text/html') // 'text/html; charset=utf-8'
-mime.contentType('text/html; charset=iso-8859-1') // 'text/html; charset=iso-8859-1'
+Prebuilds will be attempted loaded from `MODULE_PATH/prebuilds/...` and then next `EXEC_PATH/prebuilds/...` (the latter allowing use with `zeit/pkg`)
 
-// from a full path
-mime.contentType(path.extname('/path/to/file.json')) // 'application/json; charset=utf-8'
-```
+## Supported prebuild names
 
-### mime.extension(type)
+If so desired you can bundle more specific flavors, for example `musl` builds to support Alpine, or targeting a numbered ARM architecture version.
 
-Get the default extension for a content-type.
+These prebuilds can be bundled in addition to generic prebuilds; `node-gyp-build` will try to find the most specific flavor first. Prebuild filenames are composed of _tags_. The runtime tag takes precedence, as does an `abi` tag over `napi`. For more details on tags, please see [`prebuildify`][prebuildify].
 
-```js
-mime.extension('application/octet-stream') // 'bin'
-```
-
-### mime.charset(type)
-
-Lookup the implied default charset of a content-type.
-
-```js
-mime.charset('text/markdown') // 'UTF-8'
-```
-
-### var type = mime.types[extension]
-
-A map of content-types by extension.
-
-### [extensions...] = mime.extensions[type]
-
-A map of extensions by content-type.
+Values for the `libc` and `armv` tags are auto-detected but can be overridden through the `LIBC` and `ARM_VERSION` environment variables, respectively.
 
 ## License
 
-[MIT](LICENSE)
+MIT
 
-[ci-image]: https://badgen.net/github/checks/jshttp/mime-types/master?label=ci
-[ci-url]: https://github.com/jshttp/mime-types/actions/workflows/ci.yml
-[coveralls-image]: https://badgen.net/coveralls/c/github/jshttp/mime-types/master
-[coveralls-url]: https://coveralls.io/r/jshttp/mime-types?branch=master
-[node-version-image]: https://badgen.net/npm/node/mime-types
-[node-version-url]: https://nodejs.org/en/download
-[npm-downloads-image]: https://badgen.net/npm/dm/mime-types
-[npm-url]: https://npmjs.org/package/mime-types
-[npm-version-image]: https://badgen.net/npm/v/mime-types
+[prebuildify]: https://github.com/prebuild/prebuildify
+[node-gyp]: https://www.npmjs.com/package/node-gyp
