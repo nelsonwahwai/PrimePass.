@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrimePass | Admin Platform</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="primepassstyles.css" />
+  </head>
+  <body>
+    <main class="page-content admin-shell">
+      <!-- Login Gate -->
+      <section class="section-block" id="adminLoginGate">
+        <div class="card auth-card admin-login-card">
+          <p class="eyebrow">Admin authentication required</p>
+          <h1>Sign in to admin console</h1>
+          <form id="adminLoginForm" class="auth-form" action="#" method="post">
+            <label for="admin-email">Admin email</label>
+            <input id="admin-email" type="email" placeholder="admin@primepass.app" value="nelsonwahwai9@gmail.com" required />
+            <label for="admin-password">Password</label>
+            <input id="admin-password" type="password" placeholder="Password" required />
+            <button type="submit">Authenticate</button>
+            <div class="auth-links auth-links-row">
+              <a href="reset-password.html" class="pill-button inline-btn-sm">Forgot password</a>
+              <a href="#" id="showGuestInviteBtn" class="pill-button inline-btn-sm">Guest admin</a>
+            </div>
+            <p id="adminAuthStatus" class="form-status">Enter your admin credentials.</p>
+          </form>
+          <div id="guestInviteForm" class="guest-invite-section">
+            <h3>Invite guest admin</h3>
+            <p>Guest admins have limited access (concierge role). Main admin must approve.</p>
+            <form id="guestInviteApiForm" class="guest-invite-form">
+              <label><span>First name</span><input id="guestFirstName" maxlength="80" required /></label>
+              <label><span>Last name</span><input id="guestLastName" maxlength="80" required /></label>
+              <label><span>Email</span><input id="guestEmail" type="email" required /></label>
+              <button type="submit">Send invitation</button>
+              <p id="guestInviteStatus" class="form-status"></p>
+            </form>
+          </div>
+          <div id="mfaSection" class="admin-mfa-section">
+            <p>Enter MFA code from your authenticator app</p>
+            <form id="adminMfaForm" class="auth-form">
+              <input id="admin-mfa-code" type="text" maxlength="6" placeholder="000000" pattern="[0-9]{6}" required />
+              <button type="submit">Verify MFA</button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- Admin Dashboard -->
+      <div id="adminDashboard" class="admin-dashboard-hidden">
+        <section class="section-block">
+          <div class="admin-dashboard-header">
+            <div>
+              <p class="eyebrow">Admin console</p>
+              <h1>Control PrimePass without code changes</h1>
+              <p class="hero-text">This dashboard is backend-connected for role-based admins to edit packages, payments, travel plans, media, discounts, services, users, insurance rules, and automations.</p>
+            </div>
+            <button id="adminLogoutBtn" type="button" class="pill-button admin-logout-btn">Logout</button>
+          </div>
+          <div id="adminDashboardStats" class="card admin-stats-card">
+            <h3>Dashboard overview</h3>
+            <p id="adminStatsContent">Loading stats...</p>
+          </div>
+        </section>
+        <section class="admin-grid">
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/packages" data-method="POST">
+            <h2>Packages and prices</h2>
+            <label><span>Slug</span><input name="slug" maxlength="80" placeholder="forever-after" required /></label>
+            <label><span>Name</span><input name="name" maxlength="200" placeholder="Forever After" required /></label>
+            <label><span>Brand</span><select name="brand"><option>primepass</option><option>hearts_in_transit</option><option>safari_nami</option></select></label>
+            <label><span>Price (USD)</span><input name="price_from" type="number" min="0" step="0.01" /></label>
+            <label><span>Description</span><textarea name="description" maxlength="2000"></textarea></label>
+            <label><span>Insurance limit</span><input name="insurance_limit" maxlength="100" placeholder="USD 15000" /></label>
+            <label><span>Featured</span><select name="is_featured"><option value="false">No</option><option value="true">Yes</option></select></label>
+            <button type="submit">Queue package update</button>
+            <p class="form-status"></p>
+          </form>
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/content" data-method="POST">
+            <h2>Travel plans and media</h2>
+            <label><span>Title</span><input name="title" maxlength="120" /></label>
+            <label><span>Destination slug</span><input name="destination_slug" maxlength="80" placeholder="amalfi-coast" /></label>
+            <label><span>Description</span><textarea name="description" maxlength="2000"></textarea></label>
+            <label><span>Image URL</span><input name="image" type="url" /></label>
+            <label><span>Service action</span><select name="action"><option>Add service</option><option>Reduce service</option><option>Replace image</option><option>Publish travel plan</option></select></label>
+            <button type="submit">Queue content update</button>
+            <p class="form-status"></p>
+          </form>
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/users" data-method="POST">
+            <h2>Accounts and policy</h2>
+            <label><span>User email</span><input name="email" type="email" required /></label>
+            <label><span>Action</span><select name="action"><option value="review">Review account</option><option value="ban">Ban account</option><option value="restore">Restore account</option><option value="force_reset">Force password reset</option><option value="grant_admin">Grant admin</option><option value="revoke_admin">Revoke admin</option></select></label>
+            <label><span>Reason</span><input name="reason" maxlength="500" placeholder="Policy violation reference" /></label>
+            <button type="submit">Queue account action</button>
+            <p class="form-status"></p>
+          </form>
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/automations" data-method="POST">
+            <h2>Automations</h2>
+            <label><span>Task</span><input name="task" maxlength="200" placeholder="Apply early-bird discount" required /></label>
+            <label><span>Trigger</span><select name="trigger"><option value="payment_received">Payment received</option><option value="date_reached">Date reached</option><option value="seats_below_limit">Seats below limit</option><option value="discount_expires">Discount expires</option></select></label>
+            <label><span>Target date</span><input name="target_date" type="date" /></label>
+            <button type="submit">Queue automation</button>
+            <p class="form-status"></p>
+          </form>
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/insurance" data-method="POST">
+            <h2>Insurance plans</h2>
+            <label><span>Plan name</span><input name="name" maxlength="200" placeholder="Exclusive Premium Cover" required /></label>
+            <label><span>Coverage limit ($)</span><input name="coverage_limit" type="number" min="0" step="0.01" /></label>
+            <label><span>Deductible ($)</span><input name="deductible" type="number" min="0" step="0.01" /></label>
+            <label><span>Medical evacuation ($)</span><input name="medical_evac" type="number" min="0" step="0.01" /></label>
+            <label><span>Cancellation cover ($)</span><input name="cancellation_cover" type="number" min="0" step="0.01" /></label>
+            <button type="submit">Upsert insurance plan</button>
+            <p class="form-status"></p>
+          </form>
+          <form class="card admin-card js-admin-api-form" data-endpoint="/api/admin/discounts" data-method="POST">
+            <h2>Discount codes</h2>
+            <label><span>Code</span><input name="code" maxlength="40" placeholder="WELCOME20" required /></label>
+            <label><span>Discount %</span><input name="discount_percent" type="number" min="1" max="100" required /></label>
+            <label><span>Package slug (optional)</span><input name="package_slug" maxlength="80" placeholder="solo-star" /></label>
+            <label><span>Max uses</span><input name="max_uses" type="number" min="1" /></label>
+            <label><span>Expires</span><input name="expires_at" type="date" /></label>
+            <button type="submit">Create discount</button>
+            <p class="form-status"></p>
+          </form>
+        </section>
+        <section class="section-block">
+          <div class="card admin-audit-card">
+            <h3>Audit log</h3>
+            <div id="adminAuditLog"><p>Loading audit trail...</p></div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="script.js"></script>
+  </body>
+</html>
+

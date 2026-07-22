@@ -1,0 +1,20 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	ignorecase = true
+[remote "origin"]
+	url = https://github.com/nelsonwahwai/PrimePass.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[user]
+	email = nelsonwahwai@gmail.com
+	name = nelsonwahwai
+[http]
+	postBuffer = 524288000
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+[branch "blackboxai/primepass-v2.0"]
+	remote = origin
+	merge = refs/heads/blackboxai/primepass-v2.0
