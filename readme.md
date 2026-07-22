@@ -1,147 +1,255 @@
-<h1 align="center"> <code>express-rate-limit</code> </h1>
+# node-jws [![Build Status](https://secure.travis-ci.org/brianloveswords/node-jws.svg)](http://travis-ci.org/brianloveswords/node-jws)
 
-<div align="center">
+An implementation of [JSON Web Signatures](http://self-issued.info/docs/draft-ietf-jose-json-web-signature.html).
 
-[![tests](https://img.shields.io/github/actions/workflow/status/express-rate-limit/express-rate-limit/ci.yaml)](https://github.com/express-rate-limit/express-rate-limit/actions/workflows/ci.yaml)
-[![npm version](https://img.shields.io/npm/v/express-rate-limit.svg)](https://npmjs.org/package/express-rate-limit 'View this project on NPM')
-[![npm downloads](https://img.shields.io/npm/dm/express-rate-limit)](https://www.npmjs.com/package/express-rate-limit)
-[![license](https://img.shields.io/npm/l/express-rate-limit)](license.md)
+This was developed against `draft-ietf-jose-json-web-signature-08` and
+implements the entire spec **except** X.509 Certificate Chain
+signing/verifying (patches welcome).
 
-</div>
+There are both synchronous (`jws.sign`, `jws.verify`) and streaming
+(`jws.createSign`, `jws.createVerify`) APIs.
 
-Basic rate-limiting middleware for [Express](http://expressjs.com/). Use to
-limit repeated requests to public APIs and/or endpoints such as password reset.
-Plays nice with
-[express-slow-down](https://www.npmjs.com/package/express-slow-down) and
-[ratelimit-header-parser](https://www.npmjs.com/package/ratelimit-header-parser).
+# Install
 
-## Usage
-
-The [full documentation](https://express-rate-limit.mintlify.app/overview) is
-available on-line.
-
-```ts
-import { rateLimit } from 'express-rate-limit'
-
-const limiter = rateLimit({
-	windowMs: 15 * 60 * 1000, // 15 minutes
-	limit: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
-	standardHeaders: 'draft-8', // draft-6: `RateLimit-*` headers; draft-7 & draft-8: combined `RateLimit` header
-	legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
-	// store: ... , // Redis, Memcached, etc. See below.
-})
-
-// Apply the rate limiting middleware to all requests.
-app.use(limiter)
+```bash
+$ npm install jws
 ```
 
-### Data Stores
+# Usage
 
-The rate limiter comes with a built-in memory store, and supports a variety of
-[external data stores](https://express-rate-limit.mintlify.app/reference/stores).
+## jws.ALGORITHMS
 
-### Configuration
+Array of supported algorithms. The following algorithms are currently supported.
 
-All function options may be async. Click the name for additional info and
-default values.
+alg Parameter Value | Digital Signature or MAC Algorithm
+----------------|----------------------------
+HS256 | HMAC using SHA-256 hash algorithm
+HS384 | HMAC using SHA-384 hash algorithm
+HS512 | HMAC using SHA-512 hash algorithm
+RS256 | RSASSA using SHA-256 hash algorithm
+RS384 | RSASSA using SHA-384 hash algorithm
+RS512 | RSASSA using SHA-512 hash algorithm
+PS256 | RSASSA-PSS using SHA-256 hash algorithm
+PS384 | RSASSA-PSS using SHA-384 hash algorithm
+PS512 | RSASSA-PSS using SHA-512 hash algorithm
+ES256 | ECDSA using P-256 curve and SHA-256 hash algorithm
+ES384 | ECDSA using P-384 curve and SHA-384 hash algorithm
+ES512 | ECDSA using P-521 curve and SHA-512 hash algorithm
+none | No digital signature or MAC value included
 
-| Option                     | Type                                      | Remarks                                                                                         |
-| -------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [`windowMs`]               | `number`                                  | How long to remember requests for, in milliseconds.                                             |
-| [`limit`]                  | `number` \| `function`                    | How many requests to allow.                                                                     |
-| [`message`]                | `string` \| `json` \| `function`          | Response to return after limit is reached.                                                      |
-| [`statusCode`]             | `number`                                  | HTTP status code after limit is reached (default is 429).                                       |
-| [`handler`]                | `function`                                | Function to run after limit is reached (overrides `message` and `statusCode` settings, if set). |
-| [`legacyHeaders`]          | `boolean`                                 | Enable the `X-Rate-Limit` header.                                                               |
-| [`standardHeaders`]        | `'draft-6'` \| `'draft-7'` \| `'draft-8'` | Enable the `Ratelimit` header.                                                                  |
-| [`identifier`]             | `string` \| `function`                    | Name associated with the quota policy enforced by this rate limiter.                            |
-| [`store`]                  | `Store`                                   | Use a custom store to share hit counts across multiple nodes.                                   |
-| [`passOnStoreError`]       | `boolean`                                 | Allow (`true`) or block (`false`, default) traffic if the store becomes unavailable.            |
-| [`keyGenerator`]           | `function`                                | Identify users (defaults to IP address).                                                        |
-| [`requestPropertyName`]    | `string`                                  | Add rate limit info to the `req` object.                                                        |
-| [`skip`]                   | `function`                                | Return `true` to bypass the limiter for the given request.                                      |
-| [`skipSuccessfulRequests`] | `boolean`                                 | Uncount 1xx/2xx/3xx responses.                                                                  |
-| [`skipFailedRequests`]     | `boolean`                                 | Uncount 4xx/5xx responses.                                                                      |
-| [`requestWasSuccessful`]   | `function`                                | Used by `skipSuccessfulRequests` and `skipFailedRequests`.                                      |
-| [`validate`]               | `boolean` \| `object`                     | Enable or disable built-in validation checks.                                                   |
+## jws.sign(options)
 
-## Thank You
+(Synchronous) Return a JSON Web Signature for a header and a payload.
 
-Sponsored by [Zuplo](https://zuplo.link/express-rate-limit) a fully-managed API
-Gateway for developers. Add
-[dynamic rate-limiting](https://zuplo.link/dynamic-rate-limiting),
-authentication and more to any API in minutes. Learn more at
-[zuplo.com](https://zuplo.link/express-rate-limit)
+Options:
 
-<p align="center">
-<a href="https://zuplo.link/express-rate-limit">
-<picture width="322">
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/express-rate-limit/express-rate-limit/assets/114976/cd2f6fa7-eae1-4fbb-be7d-b17df4c6f383">
-  <img alt="zuplo-logo" src="https://github.com/express-rate-limit/express-rate-limit/assets/114976/66fd75fa-b39e-4a8c-8d7a-52369bf244dc" width="322">
-</picture>
-</a>
-</p>
+* `header`
+* `payload`
+* `secret` or `privateKey`
+* `encoding` (Optional, defaults to 'utf8')
 
----
+`header` must be an object with an `alg` property. `header.alg` must be
+one a value found in `jws.ALGORITHMS`. See above for a table of
+supported algorithms.
 
-Thanks to Mintlify for hosting the documentation at
-[express-rate-limit.mintlify.app](https://express-rate-limit.mintlify.app)
+If `payload` is not a buffer or a string, it will be coerced into a string
+using `JSON.stringify`.
 
-<p align="center">
-	<a href="https://mintlify.com/?utm_campaign=devmark&utm_medium=readme&utm_source=express-rate-limit">
-		<img height="75" src="https://devmark-public-assets.s3.us-west-2.amazonaws.com/sponsorships/mintlify.svg" alt="Create your docs today">
-	</a>
-</p>
+Example
 
----
+```js
+const signature = jws.sign({
+  header: { alg: 'HS256' },
+  payload: 'h. jon benjamin',
+  secret: 'has a van',
+});
+```
 
-Finally, thank you to everyone who's contributed to this project in any way! 🫶
+## jws.verify(signature, algorithm, secretOrKey)
 
-## Issues and Contributing
+(Synchronous) Returns `true` or `false` for whether a signature matches a
+secret or key.
 
-If you encounter a bug or want to see something added/changed, please go ahead
-and
-[open an issue](https://github.com/express-rate-limit/express-rate-limit/issues/new)!
-If you need help with something, feel free to
-[start a discussion](https://github.com/express-rate-limit/express-rate-limit/discussions/new)!
+`signature` is a JWS Signature. `header.alg` must be a value found in `jws.ALGORITHMS`.
+See above for a table of supported algorithms. `secretOrKey` is a string or
+buffer containing either the secret for HMAC algorithms, or the PEM
+encoded public key for RSA and ECDSA.
 
-If you wish to contribute to the library, thanks! First, please read
-[the contributing guide](https://express-rate-limit.mintlify.app/docs/guides/contributing.mdx).
-Then you can pick up any issue and fix/implement it!
+Note that the `"alg"` value from the signature header is ignored.
 
-## License
 
-MIT © [Nathan Friedly](http://nfriedly.com/),
-[Vedant K](https://github.com/gamemaker1)
+## jws.decode(signature)
 
-[`windowMs`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#windowms
-[`limit`]: https://express-rate-limit.mintlify.app/reference/configuration#limit
-[`message`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#message
-[`statusCode`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#statuscode
-[`handler`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#handler
-[`legacyHeaders`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#legacyheaders
-[`standardHeaders`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#standardheaders
-[`identifier`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#identifier
-[`store`]: https://express-rate-limit.mintlify.app/reference/configuration#store
-[`passOnStoreError`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#passOnStoreError
-[`keyGenerator`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#keygenerator
-[`requestPropertyName`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#requestpropertyname
-[`skip`]: https://express-rate-limit.mintlify.app/reference/configuration#skip
-[`skipSuccessfulRequests`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#skipsuccessfulrequests
-[`skipFailedRequests`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#skipfailedrequests
-[`requestWasSuccessful`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#requestwassuccessful
-[`validate`]:
-	https://express-rate-limit.mintlify.app/reference/configuration#validate
+(Synchronous) Returns the decoded header, decoded payload, and signature
+parts of the JWS Signature.
+
+Returns an object with three properties, e.g.
+```js
+{ header: { alg: 'HS256' },
+  payload: 'h. jon benjamin',
+  signature: 'YOWPewyGHKu4Y_0M_vtlEnNlqmFOclqp4Hy6hVHfFT4'
+}
+```
+
+## jws.createSign(options)
+
+Returns a new SignStream object.
+
+Options:
+
+* `header` (required)
+* `payload`
+* `key` || `privateKey` || `secret`
+* `encoding` (Optional, defaults to 'utf8')
+
+Other than `header`, all options expect a string or a buffer when the
+value is known ahead of time, or a stream for convenience.
+`key`/`privateKey`/`secret` may also be an object when using an encrypted
+private key, see the [crypto documentation][encrypted-key-docs].
+
+Example:
+
+```js
+
+// This...
+jws.createSign({
+  header: { alg: 'RS256' },
+  privateKey: privateKeyStream,
+  payload: payloadStream,
+}).on('done', function(signature) {
+  // ...
+});
+
+// is equivalent to this:
+const signer = jws.createSign({
+  header: { alg: 'RS256' },
+});
+privateKeyStream.pipe(signer.privateKey);
+payloadStream.pipe(signer.payload);
+signer.on('done', function(signature) {
+  // ...
+});
+```
+
+## jws.createVerify(options)
+
+Returns a new VerifyStream object.
+
+Options:
+
+* `signature`
+* `algorithm`
+* `key` || `publicKey` || `secret`
+* `encoding` (Optional, defaults to 'utf8')
+
+All options expect a string or a buffer when the value is known ahead of
+time, or a stream for convenience.
+
+Example:
+
+```js
+
+// This...
+jws.createVerify({
+  publicKey: pubKeyStream,
+  signature: sigStream,
+}).on('done', function(verified, obj) {
+  // ...
+});
+
+// is equivilant to this:
+const verifier = jws.createVerify();
+pubKeyStream.pipe(verifier.publicKey);
+sigStream.pipe(verifier.signature);
+verifier.on('done', function(verified, obj) {
+  // ...
+});
+```
+
+## Class: SignStream
+
+A `Readable Stream` that emits a single data event (the calculated
+signature) when done.
+
+### Event: 'done'
+`function (signature) { }`
+
+### signer.payload
+
+A `Writable Stream` that expects the JWS payload. Do *not* use if you
+passed a `payload` option to the constructor.
+
+Example:
+
+```js
+payloadStream.pipe(signer.payload);
+```
+
+### signer.secret<br>signer.key<br>signer.privateKey
+
+A `Writable Stream`. Expects the JWS secret for HMAC, or the privateKey
+for ECDSA and RSA. Do *not* use if you passed a `secret` or `key` option
+to the constructor.
+
+Example:
+
+```js
+privateKeyStream.pipe(signer.privateKey);
+```
+
+## Class: VerifyStream
+
+This is a `Readable Stream` that emits a single data event, the result
+of whether or not that signature was valid.
+
+### Event: 'done'
+`function (valid, obj) { }`
+
+`valid` is a boolean for whether or not the signature is valid.
+
+### verifier.signature
+
+A `Writable Stream` that expects a JWS Signature. Do *not* use if you
+passed a `signature` option to the constructor.
+
+### verifier.secret<br>verifier.key<br>verifier.publicKey
+
+A `Writable Stream` that expects a public key or secret. Do *not* use if you
+passed a `key` or `secret` option to the constructor.
+
+# TODO
+
+* It feels like there should be some convenience options/APIs for
+  defining the algorithm rather than having to define a header object
+  with `{ alg: 'ES512' }` or whatever every time.
+
+* X.509 support, ugh
+
+# License
+
+MIT
+
+```
+Copyright (c) 2013-2015 Brian J. Brennan
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+[encrypted-key-docs]: https://nodejs.org/api/crypto.html#crypto_sign_sign_private_key_output_format

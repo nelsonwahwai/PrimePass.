@@ -1,19 +1,19 @@
 {
-  "name": "debug",
-  "repo": "visionmedia/debug",
-  "description": "small debugging utility",
-  "version": "2.6.9",
-  "keywords": [
-    "debug",
-    "log",
-    "debugger"
+  "name" : "isarray",
+  "description" : "Array#isArray for older browsers",
+  "version" : "0.0.1",
+  "repository" : "juliangruber/isarray",
+  "homepage": "https://github.com/juliangruber/isarray",
+  "main" : "index.js",
+  "scripts" : [
+    "index.js"
   ],
-  "main": "src/browser.js",
-  "scripts": [
-    "src/browser.js",
-    "src/debug.js"
-  ],
-  "dependencies": {
-    "rauchg/ms.js": "0.7.1"
-  }
+  "dependencies" : {},
+  "keywords": ["browser","isarray","array"],
+  "author": {
+    "name": "Julian Gruber",
+    "email": "mail@juliangruber.com",
+    "url": "http://juliangruber.com"
+  },
+  "license": "MIT"
 }
