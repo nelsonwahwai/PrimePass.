@@ -1,102 +1,147 @@
-# concat-stream
+<h1 align="center"> <code>express-rate-limit</code> </h1>
 
-Writable stream that concatenates all the data from a stream and calls a callback with the result. Use this when you want to collect all the data from a stream into a single buffer.
+<div align="center">
 
-[![Build Status](https://travis-ci.org/maxogden/concat-stream.svg?branch=master)](https://travis-ci.org/maxogden/concat-stream)
+[![tests](https://img.shields.io/github/actions/workflow/status/express-rate-limit/express-rate-limit/ci.yaml)](https://github.com/express-rate-limit/express-rate-limit/actions/workflows/ci.yaml)
+[![npm version](https://img.shields.io/npm/v/express-rate-limit.svg)](https://npmjs.org/package/express-rate-limit 'View this project on NPM')
+[![npm downloads](https://img.shields.io/npm/dm/express-rate-limit)](https://www.npmjs.com/package/express-rate-limit)
+[![license](https://img.shields.io/npm/l/express-rate-limit)](license.md)
 
-[![NPM](https://nodei.co/npm/concat-stream.png)](https://nodei.co/npm/concat-stream/)
+</div>
 
-### description
+Basic rate-limiting middleware for [Express](http://expressjs.com/). Use to
+limit repeated requests to public APIs and/or endpoints such as password reset.
+Plays nice with
+[express-slow-down](https://www.npmjs.com/package/express-slow-down) and
+[ratelimit-header-parser](https://www.npmjs.com/package/ratelimit-header-parser).
 
-Streams emit many buffers. If you want to collect all of the buffers, and when the stream ends concatenate all of the buffers together and receive a single buffer then this is the module for you.
+## Usage
 
-Only use this if you know you can fit all of the output of your stream into a single Buffer (e.g. in RAM).
+The [full documentation](https://express-rate-limit.mintlify.app/overview) is
+available on-line.
 
-There are also `objectMode` streams that emit things other than Buffers, and you can concatenate these too. See below for details.
+```ts
+import { rateLimit } from 'express-rate-limit'
 
-## Related
+const limiter = rateLimit({
+	windowMs: 15 * 60 * 1000, // 15 minutes
+	limit: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes).
+	standardHeaders: 'draft-8', // draft-6: `RateLimit-*` headers; draft-7 & draft-8: combined `RateLimit` header
+	legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
+	// store: ... , // Redis, Memcached, etc. See below.
+})
 
-`concat-stream` is part of the [mississippi stream utility collection](https://github.com/maxogden/mississippi) which includes more useful stream modules similar to this one.
-
-### examples
-
-#### Buffers
-
-```js
-var fs = require('fs')
-var concat = require('concat-stream')
-
-var readStream = fs.createReadStream('cat.png')
-var concatStream = concat(gotPicture)
-
-readStream.on('error', handleError)
-readStream.pipe(concatStream)
-
-function gotPicture(imageBuffer) {
-  // imageBuffer is all of `cat.png` as a node.js Buffer
-}
-
-function handleError(err) {
-  // handle your error appropriately here, e.g.:
-  console.error(err) // print the error to STDERR
-  process.exit(1) // exit program with non-zero exit code
-}
-
+// Apply the rate limiting middleware to all requests.
+app.use(limiter)
 ```
 
-#### Arrays
+### Data Stores
 
-```js
-var write = concat(function(data) {})
-write.write([1,2,3])
-write.write([4,5,6])
-write.end()
-// data will be [1,2,3,4,5,6] in the above callback
-```
+The rate limiter comes with a built-in memory store, and supports a variety of
+[external data stores](https://express-rate-limit.mintlify.app/reference/stores).
 
-#### Uint8Arrays
+### Configuration
 
-```js
-var write = concat(function(data) {})
-var a = new Uint8Array(3)
-a[0] = 97; a[1] = 98; a[2] = 99
-write.write(a)
-write.write('!')
-write.end(Buffer.from('!!1'))
-```
+All function options may be async. Click the name for additional info and
+default values.
 
-See `test/` for more examples
+| Option                     | Type                                      | Remarks                                                                                         |
+| -------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [`windowMs`]               | `number`                                  | How long to remember requests for, in milliseconds.                                             |
+| [`limit`]                  | `number` \| `function`                    | How many requests to allow.                                                                     |
+| [`message`]                | `string` \| `json` \| `function`          | Response to return after limit is reached.                                                      |
+| [`statusCode`]             | `number`                                  | HTTP status code after limit is reached (default is 429).                                       |
+| [`handler`]                | `function`                                | Function to run after limit is reached (overrides `message` and `statusCode` settings, if set). |
+| [`legacyHeaders`]          | `boolean`                                 | Enable the `X-Rate-Limit` header.                                                               |
+| [`standardHeaders`]        | `'draft-6'` \| `'draft-7'` \| `'draft-8'` | Enable the `Ratelimit` header.                                                                  |
+| [`identifier`]             | `string` \| `function`                    | Name associated with the quota policy enforced by this rate limiter.                            |
+| [`store`]                  | `Store`                                   | Use a custom store to share hit counts across multiple nodes.                                   |
+| [`passOnStoreError`]       | `boolean`                                 | Allow (`true`) or block (`false`, default) traffic if the store becomes unavailable.            |
+| [`keyGenerator`]           | `function`                                | Identify users (defaults to IP address).                                                        |
+| [`requestPropertyName`]    | `string`                                  | Add rate limit info to the `req` object.                                                        |
+| [`skip`]                   | `function`                                | Return `true` to bypass the limiter for the given request.                                      |
+| [`skipSuccessfulRequests`] | `boolean`                                 | Uncount 1xx/2xx/3xx responses.                                                                  |
+| [`skipFailedRequests`]     | `boolean`                                 | Uncount 4xx/5xx responses.                                                                      |
+| [`requestWasSuccessful`]   | `function`                                | Used by `skipSuccessfulRequests` and `skipFailedRequests`.                                      |
+| [`validate`]               | `boolean` \| `object`                     | Enable or disable built-in validation checks.                                                   |
 
-# methods
+## Thank You
 
-```js
-var concat = require('concat-stream')
-```
+Sponsored by [Zuplo](https://zuplo.link/express-rate-limit) a fully-managed API
+Gateway for developers. Add
+[dynamic rate-limiting](https://zuplo.link/dynamic-rate-limiting),
+authentication and more to any API in minutes. Learn more at
+[zuplo.com](https://zuplo.link/express-rate-limit)
 
-## var writable = concat(opts={}, cb)
+<p align="center">
+<a href="https://zuplo.link/express-rate-limit">
+<picture width="322">
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/express-rate-limit/express-rate-limit/assets/114976/cd2f6fa7-eae1-4fbb-be7d-b17df4c6f383">
+  <img alt="zuplo-logo" src="https://github.com/express-rate-limit/express-rate-limit/assets/114976/66fd75fa-b39e-4a8c-8d7a-52369bf244dc" width="322">
+</picture>
+</a>
+</p>
 
-Return a `writable` stream that will fire `cb(data)` with all of the data that
-was written to the stream. Data can be written to `writable` as strings,
-Buffers, arrays of byte integers, and Uint8Arrays. 
+---
 
-By default `concat-stream` will give you back the same data type as the type of the first buffer written to the stream. Use `opts.encoding` to set what format `data` should be returned as, e.g. if you if you don't want to rely on the built-in type checking or for some other reason.
+Thanks to Mintlify for hosting the documentation at
+[express-rate-limit.mintlify.app](https://express-rate-limit.mintlify.app)
 
-* `string` - get a string
-* `buffer` - get back a Buffer
-* `array` - get an array of byte integers
-* `uint8array`, `u8`, `uint8` - get back a Uint8Array
-* `object`, get back an array of Objects
+<p align="center">
+	<a href="https://mintlify.com/?utm_campaign=devmark&utm_medium=readme&utm_source=express-rate-limit">
+		<img height="75" src="https://devmark-public-assets.s3.us-west-2.amazonaws.com/sponsorships/mintlify.svg" alt="Create your docs today">
+	</a>
+</p>
 
-If you don't specify an encoding, and the types can't be inferred (e.g. you write things that aren't in the list above), it will try to convert concat them into a `Buffer`.
+---
 
-If nothing is written to `writable` then `data` will be an empty array `[]`.
+Finally, thank you to everyone who's contributed to this project in any way! 🫶
 
-# error handling
+## Issues and Contributing
 
-`concat-stream` does not handle errors for you, so you must handle errors on whatever streams you pipe into `concat-stream`. This is a general rule when programming with node.js streams: always handle errors on each and every stream. Since `concat-stream` is not itself a stream it does not emit errors.
+If you encounter a bug or want to see something added/changed, please go ahead
+and
+[open an issue](https://github.com/express-rate-limit/express-rate-limit/issues/new)!
+If you need help with something, feel free to
+[start a discussion](https://github.com/express-rate-limit/express-rate-limit/discussions/new)!
 
-We recommend using [`end-of-stream`](https://npmjs.org/end-of-stream) or [`pump`](https://npmjs.org/pump) for writing error tolerant stream code.
+If you wish to contribute to the library, thanks! First, please read
+[the contributing guide](https://express-rate-limit.mintlify.app/docs/guides/contributing.mdx).
+Then you can pick up any issue and fix/implement it!
 
-# license
+## License
 
-MIT LICENSE
+MIT © [Nathan Friedly](http://nfriedly.com/),
+[Vedant K](https://github.com/gamemaker1)
+
+[`windowMs`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#windowms
+[`limit`]: https://express-rate-limit.mintlify.app/reference/configuration#limit
+[`message`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#message
+[`statusCode`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#statuscode
+[`handler`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#handler
+[`legacyHeaders`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#legacyheaders
+[`standardHeaders`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#standardheaders
+[`identifier`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#identifier
+[`store`]: https://express-rate-limit.mintlify.app/reference/configuration#store
+[`passOnStoreError`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#passOnStoreError
+[`keyGenerator`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#keygenerator
+[`requestPropertyName`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#requestpropertyname
+[`skip`]: https://express-rate-limit.mintlify.app/reference/configuration#skip
+[`skipSuccessfulRequests`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#skipsuccessfulrequests
+[`skipFailedRequests`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#skipfailedrequests
+[`requestWasSuccessful`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#requestwassuccessful
+[`validate`]:
+	https://express-rate-limit.mintlify.app/reference/configuration#validate
