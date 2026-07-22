@@ -1,29 +1,53 @@
 {
-	"root": true,
-
-	"extends": "@ljharb/eslint-config/node/0.4",
-
-	"rules": {
-		"array-element-newline": 0,
-		"complexity": 0,
-		"func-style": [2, "declaration"],
-		"max-lines-per-function": 0,
-		"max-nested-callbacks": 1,
-		"max-statements-per-line": 1,
-		"max-statements": 0,
-		"multiline-comment-style": 0,
-		"no-continue": 1,
-		"no-param-reassign": 1,
-		"no-restricted-syntax": 1,
-		"object-curly-newline": 0,
-	},
-
-	"overrides": [
-		{
-			"files": "test/**",
-			"rules": {
-				"camelcase": 0,
-			},
-		},
-	]
+    "root": true,
+    "extends": "@ljharb",
+    "rules": {
+        "complexity": 0,
+        "func-style": [2, "declaration"],
+        "indent": [2, 4],
+        "max-lines": 1,
+        "max-lines-per-function": 1,
+        "max-params": [2, 4],
+        "max-statements": 0,
+        "max-statements-per-line": [2, { "max": 2 }],
+        "no-magic-numbers": 0,
+        "no-param-reassign": 1,
+        "strict": 0, // TODO
+    },
+    "overrides": [
+        {
+            "files": ["test/**", "test-*", "example/**"],
+            "extends": "@ljharb/eslint-config/tests",
+            "rules": {
+              "id-length": 0,
+            },
+        },
+        {
+            "files": ["example/**"],
+            "rules": {
+                "no-console": 0,
+            },
+        },
+        {
+            "files": ["test/browser/**"],
+            "env": {
+                "browser": true,
+            },
+        },
+        {
+            "files": ["test/bigint*"],
+            "rules": {
+                "new-cap": [2, { "capIsNewExceptions": ["BigInt"] }],
+            },
+        },
+        {
+            "files": "index.js",
+            "globals": {
+                "HTMLElement": false,
+            },
+            "rules": {
+                "no-use-before-define": 1,
+            },
+        },
+    ],
 }

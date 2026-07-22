@@ -1,304 +1,207 @@
-/*!
- * express
- * Copyright(c) 2009-2013 TJ Holowaychuk
- * Copyright(c) 2014-2015 Douglas Christopher Wilson
- * MIT Licensed
- */
+'use strict'
 
-'use strict';
+const defaults = require('./defaults')
 
-/**
- * Module dependencies.
- * @api private
- */
+const { isDate } = require('util/types')
 
-var Buffer = require('safe-buffer').Buffer
-var contentDisposition = require('content-disposition');
-var contentType = require('content-type');
-var deprecate = require('depd')('express');
-var flatten = require('array-flatten');
-var mime = require('send').mime;
-var etag = require('etag');
-var proxyaddr = require('proxy-addr');
-var qs = require('qs');
-var querystring = require('querystring');
+function escapeElement(elementRepresentation) {
+  const escaped = elementRepresentation.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
 
-/**
- * Return strong ETag for `body`.
- *
- * @param {String|Buffer} body
- * @param {String} [encoding]
- * @return {String}
- * @api private
- */
+  return '"' + escaped + '"'
+}
 
-exports.etag = createETagGenerator({ weak: false })
+// convert a JS array to a postgres array literal
+// uses comma separator so won't work for types like box that use
+// a different array separator.
+function arrayString(val) {
+  let result = '{'
+  for (let i = 0; i < val.length; i++) {
+    if (i > 0) {
+      result += ','
+    }
+    let item = val[i]
+    if (item == null) {
+      result += 'NULL'
+    } else if (Array.isArray(item)) {
+      result += arrayString(item)
+    } else if (ArrayBuffer.isView(item)) {
+      if (!(item instanceof Buffer)) {
+        item = Buffer.from(item.buffer, item.byteOffset, item.byteLength)
+      }
+      result += '\\\\x' + item.toString('hex')
+    } else {
+      result += escapeElement(prepareValue(item))
+    }
+  }
+  result += '}'
+  return result
+}
 
-/**
- * Return weak ETag for `body`.
- *
- * @param {String|Buffer} body
- * @param {String} [encoding]
- * @return {String}
- * @api private
- */
+// converts values from javascript types
+// to their 'raw' counterparts for use as a postgres parameter
+// note: you can override this function to provide your own conversion mechanism
+// for complex types, etc...
+const prepareValue = function (val, seen) {
+  // null and undefined are both null for postgres
+  if (val == null) {
+    return null
+  }
+  if (typeof val === 'object') {
+    if (val instanceof Buffer) {
+      return val
+    }
+    if (ArrayBuffer.isView(val)) {
+      return Buffer.from(val.buffer, val.byteOffset, val.byteLength)
+    }
+    if (isDate(val)) {
+      if (defaults.parseInputDatesAsUTC) {
+        return dateToStringUTC(val)
+      } else {
+        return dateToString(val)
+      }
+    }
+    if (Array.isArray(val)) {
+      return arrayString(val)
+    }
 
-exports.wetag = createETagGenerator({ weak: true })
+    return prepareObject(val, seen)
+  }
+  return val.toString()
+}
 
-/**
- * Check if `path` looks absolute.
- *
- * @param {String} path
- * @return {Boolean}
- * @api private
- */
+function prepareObject(val, seen) {
+  if (val && typeof val.toPostgres === 'function') {
+    seen = seen || []
+    if (seen.indexOf(val) !== -1) {
+      throw new Error('circular reference detected while preparing "' + val + '" for query')
+    }
+    seen.push(val)
 
-exports.isAbsolute = function(path){
-  if ('/' === path[0]) return true;
-  if (':' === path[1] && ('\\' === path[2] || '/' === path[2])) return true; // Windows device path
-  if ('\\\\' === path.substring(0, 2)) return true; // Microsoft Azure absolute path
-};
+    return prepareValue(val.toPostgres(prepareValue), seen)
+  }
+  return JSON.stringify(val)
+}
 
-/**
- * Flatten the given `arr`.
- *
- * @param {Array} arr
- * @return {Array}
- * @api private
- */
+function dateToString(date) {
+  let offset = -date.getTimezoneOffset()
 
-exports.flatten = deprecate.function(flatten,
-  'utils.flatten: use array-flatten npm module instead');
+  let year = date.getFullYear()
+  const isBCYear = year < 1
+  if (isBCYear) year = Math.abs(year) + 1 // negative years are 1 off their BC representation
 
-/**
- * Normalize the given `type`, for example "html" becomes "text/html".
- *
- * @param {String} type
- * @return {Object}
- * @api private
- */
+  let ret =
+    String(year).padStart(4, '0') +
+    '-' +
+    String(date.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(date.getDate()).padStart(2, '0') +
+    'T' +
+    String(date.getHours()).padStart(2, '0') +
+    ':' +
+    String(date.getMinutes()).padStart(2, '0') +
+    ':' +
+    String(date.getSeconds()).padStart(2, '0') +
+    '.' +
+    String(date.getMilliseconds()).padStart(3, '0')
 
-exports.normalizeType = function(type){
-  return ~type.indexOf('/')
-    ? acceptParams(type)
-    : { value: mime.lookup(type), params: {} };
-};
-
-/**
- * Normalize `types`, for example "html" becomes "text/html".
- *
- * @param {Array} types
- * @return {Array}
- * @api private
- */
-
-exports.normalizeTypes = function(types){
-  var ret = [];
-
-  for (var i = 0; i < types.length; ++i) {
-    ret.push(exports.normalizeType(types[i]));
+  if (offset < 0) {
+    ret += '-'
+    offset *= -1
+  } else {
+    ret += '+'
   }
 
-  return ret;
-};
+  ret += String(Math.floor(offset / 60)).padStart(2, '0') + ':' + String(offset % 60).padStart(2, '0')
+  if (isBCYear) ret += ' BC'
+  return ret
+}
 
-/**
- * Generate Content-Disposition header appropriate for the filename.
- * non-ascii filenames are urlencoded and a filename* parameter is added
- *
- * @param {String} filename
- * @return {String}
- * @api private
- */
+function dateToStringUTC(date) {
+  let year = date.getUTCFullYear()
+  const isBCYear = year < 1
+  if (isBCYear) year = Math.abs(year) + 1 // negative years are 1 off their BC representation
 
-exports.contentDisposition = deprecate.function(contentDisposition,
-  'utils.contentDisposition: use content-disposition npm module instead');
+  let ret =
+    String(year).padStart(4, '0') +
+    '-' +
+    String(date.getUTCMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(date.getUTCDate()).padStart(2, '0') +
+    'T' +
+    String(date.getUTCHours()).padStart(2, '0') +
+    ':' +
+    String(date.getUTCMinutes()).padStart(2, '0') +
+    ':' +
+    String(date.getUTCSeconds()).padStart(2, '0') +
+    '.' +
+    String(date.getUTCMilliseconds()).padStart(3, '0')
 
-/**
- * Parse accept params `str` returning an
- * object with `.value`, `.quality` and `.params`.
- *
- * @param {String} str
- * @return {Object}
- * @api private
- */
+  ret += '+00:00'
+  if (isBCYear) ret += ' BC'
+  return ret
+}
 
-function acceptParams (str) {
-  var parts = str.split(/ *; */);
-  var ret = { value: parts[0], quality: 1, params: {} }
-
-  for (var i = 1; i < parts.length; ++i) {
-    var pms = parts[i].split(/ *= */);
-    if ('q' === pms[0]) {
-      ret.quality = parseFloat(pms[1]);
+function normalizeQueryConfig(config, values, callback) {
+  // can take in strings or config objects
+  config = typeof config === 'string' ? { text: config } : config
+  if (values) {
+    if (typeof values === 'function') {
+      config.callback = values
     } else {
-      ret.params[pms[0]] = pms[1];
+      config.values = values
+    }
+  }
+  if (callback) {
+    config.callback = callback
+  }
+  return config
+}
+
+// Ported from PostgreSQL 9.2.4 source code in src/interfaces/libpq/fe-exec.c
+const escapeIdentifier = function (str) {
+  return '"' + str.replace(/"/g, '""') + '"'
+}
+
+const escapeLiteral = function (str) {
+  let hasBackslash = false
+  let escaped = "'"
+
+  if (str == null) {
+    return "''"
+  }
+
+  if (typeof str !== 'string') {
+    return "''"
+  }
+
+  for (let i = 0; i < str.length; i++) {
+    const c = str[i]
+    if (c === "'") {
+      escaped += c + c
+    } else if (c === '\\') {
+      escaped += c + c
+      hasBackslash = true
+    } else {
+      escaped += c
     }
   }
 
-  return ret;
+  escaped += "'"
+
+  if (hasBackslash === true) {
+    escaped = ' E' + escaped
+  }
+
+  return escaped
 }
 
-/**
- * Compile "etag" value to function.
- *
- * @param  {Boolean|String|Function} val
- * @return {Function}
- * @api private
- */
-
-exports.compileETag = function(val) {
-  var fn;
-
-  if (typeof val === 'function') {
-    return val;
-  }
-
-  switch (val) {
-    case true:
-    case 'weak':
-      fn = exports.wetag;
-      break;
-    case false:
-      break;
-    case 'strong':
-      fn = exports.etag;
-      break;
-    default:
-      throw new TypeError('unknown value for etag function: ' + val);
-  }
-
-  return fn;
-}
-
-/**
- * Compile "query parser" value to function.
- *
- * @param  {String|Function} val
- * @return {Function}
- * @api private
- */
-
-exports.compileQueryParser = function compileQueryParser(val) {
-  var fn;
-
-  if (typeof val === 'function') {
-    return val;
-  }
-
-  switch (val) {
-    case true:
-    case 'simple':
-      fn = querystring.parse;
-      break;
-    case false:
-      fn = newObject;
-      break;
-    case 'extended':
-      fn = parseExtendedQueryString;
-      break;
-    default:
-      throw new TypeError('unknown value for query parser function: ' + val);
-  }
-
-  return fn;
-}
-
-/**
- * Compile "proxy trust" value to function.
- *
- * @param  {Boolean|String|Number|Array|Function} val
- * @return {Function}
- * @api private
- */
-
-exports.compileTrust = function(val) {
-  if (typeof val === 'function') return val;
-
-  if (val === true) {
-    // Support plain true/false
-    return function(){ return true };
-  }
-
-  if (typeof val === 'number') {
-    // Support trusting hop count
-    return function(a, i){ return i < val };
-  }
-
-  if (typeof val === 'string') {
-    // Support comma-separated values
-    val = val.split(',')
-      .map(function (v) { return v.trim() })
-  }
-
-  return proxyaddr.compile(val || []);
-}
-
-/**
- * Set the charset in a given Content-Type string.
- *
- * @param {String} type
- * @param {String} charset
- * @return {String}
- * @api private
- */
-
-exports.setCharset = function setCharset(type, charset) {
-  if (!type || !charset) {
-    return type;
-  }
-
-  // parse type
-  var parsed = contentType.parse(type);
-
-  // set charset
-  parsed.parameters.charset = charset;
-
-  // format type
-  return contentType.format(parsed);
-};
-
-/**
- * Create an ETag generator function, generating ETags with
- * the given options.
- *
- * @param {object} options
- * @return {function}
- * @private
- */
-
-function createETagGenerator (options) {
-  return function generateETag (body, encoding) {
-    var buf = !Buffer.isBuffer(body)
-      ? Buffer.from(body, encoding)
-      : body
-
-    return etag(buf, options)
-  }
-}
-
-/**
- * Parse an extended query string with qs.
- *
- * @param {String} str
- * @return {Object}
- * @private
- */
-
-function parseExtendedQueryString(str) {
-  return qs.parse(str, {
-    allowPrototypes: true,
-    arrayLimit: 1000
-  });
-}
-
-/**
- * Return new empty object.
- *
- * @return {Object}
- * @api private
- */
-
-function newObject() {
-  return {};
+module.exports = {
+  prepareValue: function prepareValueWrapper(value) {
+    // this ensures that extra arguments do not get passed into prepareValue
+    // by accident, eg: from calling values.map(utils.prepareValue)
+    return prepareValue(value)
+  },
+  normalizeQueryConfig,
+  escapeIdentifier,
+  escapeLiteral,
 }

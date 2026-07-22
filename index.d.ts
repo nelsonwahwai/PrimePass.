@@ -1,24 +1,37 @@
-/*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License.
- *  REQUIREMENT: This definition is dependent on the @types/node definition.
- *  Install with `npm install @types/node --save-dev`
- *--------------------------------------------------------------------------------------------*/
+import { ClientConfig } from 'pg'
 
-declare module 'iconv-lite' {
-	export function decode(buffer: Buffer, encoding: string, options?: Options): string;
-
-	export function encode(content: string, encoding: string, options?: Options): Buffer;
-
-	export function encodingExists(encoding: string): boolean;
-
-	export function decodeStream(encoding: string, options?: Options): NodeJS.ReadWriteStream;
-
-	export function encodeStream(encoding: string, options?: Options): NodeJS.ReadWriteStream;
-}
+export function parse(connectionString: string, options?: Options): ConnectionOptions
 
 export interface Options {
-    stripBOM?: boolean;
-    addBOM?: boolean;
-    defaultEncoding?: string;
+  // Use libpq semantics when interpreting the connection string
+  useLibpqCompat?: boolean
 }
+
+interface SSLConfig {
+  ca?: string
+  cert?: string | null
+  key?: string
+  rejectUnauthorized?: boolean
+}
+
+export interface ConnectionOptions {
+  host: string | null
+  password?: string
+  user?: string
+  port?: string | null
+  database: string | null | undefined
+  client_encoding?: string
+  ssl?: boolean | string | SSLConfig
+  sslnegotiation?: 'postgres' | 'direct'
+
+  application_name?: string
+  fallback_application_name?: string
+  options?: string
+  keepalives?: number
+
+  // We allow any other options to be passed through
+  [key: string]: unknown
+}
+
+export function toClientConfig(config: ConnectionOptions): ClientConfig
+export function parseIntoClientConfig(connectionString: string): ClientConfig
